@@ -329,4 +329,16 @@ Limitations by design:
 
 ### Deployment
 
-Not deployed yet. This section will list the live URLs only after they have been smoke-tested.
+Deployed and smoke-tested on 2026-10-20:
+
+- **App:** https://integration-atlas-black.vercel.app (Vercel, project root `frontend/`, `BACKEND_URL` set)
+- **API:** https://integration-atlas-api.onrender.com/api/health (Render free web service, Oregon)
+
+Smoke test:
+- All pages load.
+- Seed guides are served through the Vercel `/api` proxy, with a `Secure; HttpOnly` cookie.
+- Checklist writes succeed from the site and are rejected (403) from a foreign `Origin`.
+
+Free-tier notes:
+- The Render service sleeps when idle, so the first request can take up to a minute.
+- Session keys entered in LLM settings are cleared on each restart.

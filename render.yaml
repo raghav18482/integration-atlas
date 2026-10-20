@@ -9,11 +9,14 @@ services:
     # One instance only: bring-your-own-key sessions live in process memory.
     numInstances: 1
     buildCommand: pip install uv && uv sync --frozen --no-dev
-    startCommand: uv run alembic upgrade head && uv run uvicorn app.main:app --host 0.0.0.0 --port $PORT --proxy-headers --forwarded-allow-ips='*'
+    # Run from the build's virtualenv; Render provides the system Python (uv must not download one).
+    startCommand: .venv/bin/alembic upgrade head && .venv/bin/uvicorn app.main:app --host 0.0.0.0 --port $PORT --proxy-headers --forwarded-allow-ips='*'
     healthCheckPath: /api/health
     envVars:
       - key: PYTHON_VERSION
         value: 3.12.7
+      - key: UV_LINK_MODE
+        value: copy
       - key: ENVIRONMENT
         value: production
       - key: DATABASE_URL
