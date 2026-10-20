@@ -1,0 +1,210 @@
+{
+  "id": "5d3c2f0e-4b1a-4c55-9a51-51ac0000a003",
+  "slug": "google",
+  "provider_name": "Google (Gmail & Calendar APIs)",
+  "provider_domains": ["developers.google.com", "support.google.com", "accounts.google.com"],
+  "submitted_input": "Google",
+  "submitted_url": null,
+  "intended_use_case": "An AI assistant that reads customers' Gmail and Google Calendar",
+  "integration_context": "multi_tenant_saas",
+  "origin": "seed",
+  "research_status": "seed_curated",
+  "generated_at": "2026-10-20T09:00:00Z",
+  "last_checked_at": "2026-10-20T09:00:00Z",
+
+  "authentication_model": "oauth2",
+  "auth_model_claim_ids": ["C1", "C22"],
+  "overview": "Google APIs use OAuth 2.0 with client credentials from a Google Cloud project, a configured consent screen, and exact-match redirect URIs. Building and testing is quick: in Testing mode up to 100 named test users can authorize, but their grants expire after seven days. Launching to any Google user with sensitive or restricted scopes requires Google's OAuth app verification. Gmail and Drive scopes are restricted, which adds an annual security assessment by a Google-approved third party if data passes through your servers. Google says restricted-scope verification can take several weeks. That makes it the longest and least predictable part of this integration.",
+  "recommended_path": {
+    "summary": "For a multi-tenant assistant that reads Gmail, register your own Google Cloud OAuth client and plan for restricted-scope verification and a CASA security assessment. Avoid restricted scopes where a narrower scope works. Use internal (Workspace-only) apps or testing mode until verification completes.",
+    "options": [
+      {
+        "kind": "custom_oauth_app",
+        "title": "Your own Google Cloud OAuth client",
+        "summary": "Full control of scopes and branding; you own verification, the security assessment, and annual re-verification.",
+        "when_to_choose": "Production SaaS that needs Gmail or Calendar data from many customers.",
+        "tradeoffs": ["Restricted scopes add a third-party security assessment and annual re-verification", "Verification can take several weeks"],
+        "recommended": true,
+        "claim_ids": ["C2", "C9", "C15", "C16"]
+      },
+      {
+        "kind": "managed_oauth",
+        "title": "Use an integration platform's managed Google app",
+        "summary": "A platform that has already passed verification supplies the OAuth client.",
+        "when_to_choose": "Early pilots, if the platform's app already covers your scopes.",
+        "tradeoffs": ["Consent screen shows the platform's brand", "Restricted-scope data still flows through the platform's assessed servers; check their scope coverage (not verified here)"],
+        "recommended": false,
+        "claim_ids": []
+      }
+    ]
+  },
+  "effort_estimate": {"low_hours": 1, "high_hours": 2, "basis": "Recomputed from steps at load time."},
+  "external_wait": {
+    "kind": "estimated",
+    "summary": "Brand verification ~2–3 business days; sensitive scopes ~3–5 business days; restricted scopes (Gmail) potentially several weeks, plus a third-party security assessment.",
+    "range_text": "Days (sensitive) to several weeks or more (restricted)",
+    "explanation": "These are Google's typical durations, not guarantees. The duration and cost of the third-party security assessment (CASA) are not documented on the checked pages.",
+    "claim_ids": ["C12", "C16", "C17"]
+  },
+  "approval_status": "required",
+  "approval_summary": "Required for a public multi-tenant app requesting sensitive or restricted scopes. Exceptions exist for personal use, testing, service-owned data, internal Workspace apps, and domain-wide installation.",
+  "approval_claim_ids": ["C9", "C15", "C19"],
+  "prerequisites": [
+    {"title": "Google Cloud project and OAuth client credentials", "detail": "Create OAuth 2.0 client credentials in the Google API Console / Cloud Console.", "claim_ids": ["C2"]},
+    {"title": "Verified domain, homepage and privacy policy", "detail": "Verification requires ownership of the consent screen's authorized domains and accurate branding and policy links.", "claim_ids": ["C14"]},
+    {"title": "Budget and owner for a security assessment (restricted scopes)", "detail": "Restricted-scope data handled on your servers requires an annual assessment by a Google-approved assessor.", "claim_ids": ["C15", "C18"]}
+  ],
+  "setup_steps": [
+    {
+      "id": "create-project", "phase": "prerequisites",
+      "title": "Create a Google Cloud project (separate projects for test and prod)",
+      "explanation": "Create a project to hold the consent screen and OAuth clients. Google recommends separate projects for development/testing and production.",
+      "why_it_matters": "Verification applies per project; mixing environments complicates review.",
+      "expected_outcome": "Dedicated projects for development and production.",
+      "responsible": "developer", "active_effort_minutes": 15, "depends_on": [], "claim_ids": ["C2"]
+    },
+    {
+      "id": "configure-consent", "phase": "registration",
+      "title": "Configure the OAuth consent screen and audience",
+      "explanation": "Set app name, support email, homepage, privacy policy and authorized domains. Choose External (any Google account) or Internal (your Workspace organization only). Leave publishing status as Testing while building.",
+      "why_it_matters": "Branding and domains are checked in verification; Internal apps avoid verification for org-only use.",
+      "expected_outcome": "A consent screen in Testing with test users added.",
+      "responsible": "developer", "active_effort_minutes": 30, "depends_on": ["create-project"], "claim_ids": ["C6", "C11", "C14", "C20"]
+    },
+    {
+      "id": "create-client", "phase": "credentials",
+      "title": "Create a Web application OAuth client with exact redirect URIs",
+      "explanation": "Create OAuth client credentials and register every redirect URI. The redirect URI in requests must exactly match a registered one.",
+      "why_it_matters": "Mismatches cause redirect_uri_mismatch errors at sign-in.",
+      "expected_outcome": "A client ID and secret with registered redirect URIs.",
+      "responsible": "developer", "active_effort_minutes": 15, "depends_on": ["configure-consent"], "claim_ids": ["C2", "C3"]
+    },
+    {
+      "id": "choose-scopes", "phase": "scopes",
+      "title": "Pick the narrowest scopes and check their category",
+      "explanation": "List the Gmail and Calendar scopes you need. The Cloud Console labels each as non-sensitive, sensitive or restricted. Gmail and Drive scopes are restricted, so prefer narrower alternatives where they work, and request scopes incrementally.",
+      "why_it_matters": "Scope category decides which verification path (and timeline) applies.",
+      "expected_outcome": "A scope list with categories and a justification for each.",
+      "responsible": "developer_with_agent", "active_effort_minutes": 45, "depends_on": ["create-client"], "claim_ids": ["C4", "C24", "C27", "C28"]
+    },
+    {
+      "id": "implement-flow", "phase": "implementation",
+      "title": "Implement the web-server flow with PKCE and refresh tokens",
+      "explanation": "Redirect to Google's authorization endpoint, exchange the code at the token endpoint, store refresh tokens securely, and handle refresh-token limits per client-user.",
+      "why_it_matters": "Over the per-user limits, older refresh tokens silently stop working.",
+      "expected_outcome": "Users connect once, and the assistant keeps access through refresh.",
+      "responsible": "developer_with_agent", "active_effort_minutes": 180, "depends_on": ["choose-scopes"], "claim_ids": ["C3", "C5", "C22", "C23"]
+    },
+    {
+      "id": "test-users", "phase": "testing",
+      "title": "Test with up to 100 test users",
+      "explanation": "Add test users on the consent screen. They see a warning, and their authorizations (and refresh tokens) expire seven days after consent.",
+      "why_it_matters": "Seven-day expiry means pilots need re-consent weekly until you are verified and in production.",
+      "expected_outcome": "End-to-end testing with real accounts before verification.",
+      "responsible": "developer", "active_effort_minutes": 60, "depends_on": ["implement-flow"], "claim_ids": ["C6", "C7"]
+    },
+    {
+      "id": "prepare-verification", "phase": "verification",
+      "title": "Prepare and submit OAuth app verification",
+      "explanation": "Confirm policy compliance, verify domain ownership, declare all scopes with justifications, and record a demo video showing how each sensitive and restricted scope is used. Submit in the Verification Center.",
+      "why_it_matters": "Incomplete submissions restart the clock on a multi-week process.",
+      "expected_outcome": "A submitted verification request.",
+      "responsible": "developer_with_agent", "active_effort_minutes": 480, "depends_on": ["test-users"], "claim_ids": ["C11", "C13", "C14"]
+    },
+    {
+      "id": "security-assessment", "phase": "verification",
+      "title": "Complete the restricted-scope security assessment (CASA)",
+      "explanation": "If restricted-scope data is accessed from or through your servers, engage a Google-approved assessor. Re-verify at least every 12 months after the Letter of Assessment.",
+      "why_it_matters": "Without it, restricted scopes such as Gmail are not approved for public use.",
+      "expected_outcome": "A Letter of Assessment and approved restricted scopes.",
+      "responsible": "developer", "active_effort_minutes": null, "depends_on": ["prepare-verification"], "claim_ids": ["C15", "C18", "C25"]
+    },
+    {
+      "id": "publish", "phase": "launch",
+      "title": "Switch publishing status to In production",
+      "explanation": "Once verified, publish the app so any Google account can authorize it without test-user limits. Unverified apps showing the unverified-app screen are limited to 100 new users.",
+      "why_it_matters": "Publishing before verification exposes users to warnings and caps.",
+      "expected_outcome": "Customers can connect without warnings or user caps.",
+      "responsible": "developer", "active_effort_minutes": 15, "depends_on": ["security-assessment"], "claim_ids": ["C8", "C21"]
+    }
+  ],
+  "scopes_or_permissions": [
+    {"name": "openid, email, profile", "description": "Identity scopes advertised in Google's OpenID discovery document.", "sensitivity": "basic", "needed_for": "Signing users in", "claim_ids": ["C29"]},
+    {"name": "Gmail API scopes (read access)", "description": "Gmail scopes are among the high-risk restricted Google Workspace scopes.", "sensitivity": "restricted", "needed_for": "Reading email", "claim_ids": ["C24"]},
+    {"name": "https://www.googleapis.com/auth/calendar.readonly", "description": "Read-only Calendar access, used in Google's web-server example. Check its category in the Cloud Console.", "sensitivity": "unknown", "needed_for": "Reading calendar events", "claim_ids": ["C27", "C28"]}
+  ],
+  "approval_and_distribution": [
+    {"kind": "app_registration", "status": "not_required", "title": "Project and OAuth client creation", "applies_when": "Always", "description": "Self-serve in the Cloud Console.", "claim_ids": ["C2"]},
+    {"kind": "user_consent", "status": "required", "title": "User consent screen", "applies_when": "Every user authorization", "description": "Users approve the requested scopes; test users also see a warning while the app is in Testing.", "claim_ids": ["C6"]},
+    {"kind": "provider_verification", "status": "conditional", "title": "Brand verification", "applies_when": "Non-sensitive scopes only, but you want your app name and logo shown", "description": "A lighter-weight verification for branding.", "external_wait": {"kind": "estimated", "summary": "Typically 2–3 business days", "range_text": "2–3 business days", "explanation": "Google's typical duration.", "claim_ids": ["C17"]}, "claim_ids": ["C11"]},
+    {"kind": "provider_verification", "status": "conditional", "title": "Sensitive scope verification", "applies_when": "Any sensitive scope (unless an exception applies)", "description": "Justify scopes, verify domains, provide a demo video.", "external_wait": {"kind": "estimated", "summary": "Typically 3–5 business days", "range_text": "3–5 business days", "explanation": "Google's typical duration.", "claim_ids": ["C12"]}, "claim_ids": ["C9", "C13"]},
+    {"kind": "provider_verification", "status": "required", "title": "Restricted scope verification + security assessment", "applies_when": "Gmail/Drive restricted scopes with data on your servers", "description": "Verification plus an annual third-party security assessment.", "external_wait": {"kind": "estimated", "summary": "Potentially several weeks", "range_text": "Several weeks+", "explanation": "Assessment duration is not documented on the checked pages.", "claim_ids": ["C16"]}, "claim_ids": ["C15", "C16", "C18"]},
+    {"kind": "admin_consent", "status": "conditional", "title": "Workspace admin configuration", "applies_when": "Internal apps using restricted Workspace scopes", "description": "Authorizing restricted Workspace scopes may need configuration by the organization's administrators.", "claim_ids": ["C24"]},
+    {"kind": "production_access", "status": "conditional", "title": "Publishing status: In production", "applies_when": "Making the app available to any Google account", "description": "Production apps that meet verification criteria must complete verification; unverified apps are capped at 100 new users.", "claim_ids": ["C8", "C21"]}
+  ],
+  "testing_plan": [
+    {"title": "Run the full flow with test users", "detail": "Add up to 100 test users and confirm consent, token exchange and API calls.", "claim_ids": ["C6"]},
+    {"title": "Exercise the seven-day expiry", "detail": "Confirm the app detects expired test-user grants and asks users to reconnect.", "claim_ids": ["C7"]},
+    {"title": "Verify redirect URIs in every environment", "detail": "Check exact matches for local, staging and production callbacks.", "claim_ids": ["C3"]}
+  ],
+  "blockers_and_unknowns": [
+    {"id": "restricted-assessment", "kind": "blocker", "title": "Gmail requires restricted-scope verification and a security assessment", "detail": "Public apps reading Gmail through your servers need a Google-approved third-party assessment, repeated annually.", "mitigation": "Use narrower scopes where possible, start the assessment early, or limit launch to internal Workspace customers first.", "claim_ids": ["C15", "C18", "C24"]},
+    {"id": "assessment-duration", "kind": "unknown", "title": "Security assessment duration and cost", "detail": "Google says restricted verification can take several weeks but does not document assessor time or cost.", "mitigation": "Get quotes from approved assessors before committing to a launch date.", "claim_ids": ["C25"]},
+    {"id": "testing-expiry", "kind": "risk", "title": "Seven-day expiry in Testing", "detail": "Pilot users must re-consent weekly until the app is in production.", "mitigation": "Plan pilots around re-consent, or use an Internal app for your own organization.", "claim_ids": ["C7"]},
+    {"id": "user-cap", "kind": "risk", "title": "100 new-user cap while unverified", "detail": "Unverified apps showing the unverified-app screen are limited to 100 new users.", "mitigation": "Complete verification before broad launch.", "claim_ids": ["C21"]}
+  ],
+  "agent_vs_developer_actions": [
+    {"action": "Classify each needed scope and propose narrower alternatives", "actor": "agent", "rationale": "Checkable against Google's scope lists and Console labels."},
+    {"action": "Generate the web-server OAuth flow with PKCE, token storage and refresh handling", "actor": "agent", "rationale": "Well-documented endpoints (confirmed by the live discovery document)."},
+    {"action": "Draft scope justifications, privacy policy updates, and the demo video script", "actor": "both", "rationale": "Agent drafts; humans approve and record."},
+    {"action": "Verify domain ownership in Search Console and submit verification", "actor": "developer", "rationale": "Requires account access and attestations."},
+    {"action": "Contract and complete the CASA security assessment", "actor": "developer", "rationale": "Involves a third-party assessor and security evidence from your team."}
+  ],
+  "context_variations": {
+    "personal": "Personal use by you (or a few people you know) is exempt from verification; you can proceed through the unverified-app screen.",
+    "internal": "Set the consent screen to Internal in a project owned by your Workspace organization; verification isn't required, but admins may need to allow restricted Gmail/Drive scopes.",
+    "multi_tenant_saas": "External audience plus sensitive and restricted scopes: plan for verification and, for Gmail, an annual third-party security assessment."
+  },
+
+  "sources": [
+    {"id": "S1", "title": "Using OAuth 2.0 to Access Google APIs", "url": "https://developers.google.com/identity/protocols/oauth2", "domain": "developers.google.com", "source_type": "official_docs", "accessed_at": "2026-10-20T08:55:00Z", "retrieval_status": "retrieved"},
+    {"id": "S2", "title": "Using OAuth 2.0 for Web Server Applications", "url": "https://developers.google.com/identity/protocols/oauth2/web-server", "domain": "developers.google.com", "source_type": "official_docs", "accessed_at": "2026-10-20T08:55:00Z", "retrieval_status": "retrieved"},
+    {"id": "S3", "title": "Manage App Audience", "url": "https://support.google.com/cloud/answer/15549945", "domain": "support.google.com", "source_type": "official_support", "accessed_at": "2026-10-20T08:55:00Z", "retrieval_status": "retrieved"},
+    {"id": "S4", "title": "Sensitive scope verification", "url": "https://developers.google.com/identity/protocols/oauth2/production-readiness/sensitive-scope-verification", "domain": "developers.google.com", "source_type": "official_policy", "accessed_at": "2026-10-20T08:55:00Z", "retrieval_status": "retrieved"},
+    {"id": "S5", "title": "Restricted scope verification", "url": "https://developers.google.com/identity/protocols/oauth2/production-readiness/restricted-scope-verification", "domain": "developers.google.com", "source_type": "official_policy", "accessed_at": "2026-10-20T08:55:00Z", "retrieval_status": "retrieved"},
+    {"id": "S6", "title": "OAuth App Verification Help Center", "url": "https://support.google.com/cloud/answer/13463073", "domain": "support.google.com", "source_type": "official_support", "accessed_at": "2026-10-20T08:55:00Z", "retrieval_status": "retrieved"},
+    {"id": "S7", "title": "Unverified apps", "url": "https://support.google.com/cloud/answer/7454865", "domain": "support.google.com", "source_type": "official_support", "accessed_at": "2026-10-20T08:55:00Z", "retrieval_status": "retrieved"},
+    {"id": "S8", "title": "OpenID discovery document (accounts.google.com)", "url": "https://accounts.google.com/.well-known/openid-configuration", "domain": "accounts.google.com", "source_type": "provider_metadata", "accessed_at": "2026-10-20T08:58:00Z", "retrieval_status": "retrieved"}
+  ],
+  "claims": [
+    {"id": "C1", "statement": "Google APIs use OAuth 2.0 for authentication and authorization.", "category": "auth_model", "status": "officially_documented", "source_ids": ["S1"], "evidence_quote": "Google APIs use the OAuth 2.0 protocol for authentication and authorization", "impact": "normal"},
+    {"id": "C2", "statement": "Start by obtaining OAuth 2.0 client credentials from the Google API Console.", "category": "registration", "status": "officially_documented", "source_ids": ["S1"], "evidence_quote": "To begin, obtain OAuth 2.0 client credentials from the", "impact": "normal"},
+    {"id": "C3", "statement": "The redirect URI is required and must exactly match one of the client's authorized redirect URIs, or you get redirect_uri_mismatch.", "category": "redirect_uri", "status": "officially_documented", "source_ids": ["S2"], "evidence_quote": "The redirect URI is required. The value must exactly match one of the authorized redirect URIs for the OAuth 2.0 client", "impact": "normal"},
+    {"id": "C4", "statement": "Google recommends requesting scopes incrementally, when access is needed.", "category": "scopes", "status": "officially_documented", "source_ids": ["S1"], "evidence_quote": "It is generally a best practice to request scopes incrementally, at the time access is required", "impact": "normal"},
+    {"id": "C5", "statement": "Refresh tokens are limited per client-user combination and per user; exceeding the limits makes older refresh tokens stop working.", "category": "credentials", "status": "officially_documented", "source_ids": ["S1"], "evidence_quote": "If your application requests enough refresh tokens to go over one of the limits, older refresh tokens stop working.", "impact": "normal"},
+    {"id": "C6", "statement": "Projects in Testing are limited to up to 100 test users listed on the consent screen.", "category": "access_requirements", "status": "officially_documented", "source_ids": ["S3"], "evidence_quote": "are limited to up to 100 test users listed in the OAuth consent screen.", "impact": "high"},
+    {"id": "C7", "statement": "Test-user authorizations, including refresh tokens, expire seven days after consent.", "category": "access_requirements", "status": "officially_documented", "source_ids": ["S3"], "evidence_quote": "Authorizations by a test user will expire seven days from the time of consent.", "impact": "high"},
+    {"id": "C8", "statement": "Projects In production are available to any Google Account user, subject to verification for sensitive or restricted scopes.", "category": "distribution", "status": "officially_documented", "source_ids": ["S3"], "evidence_quote": "are available to any user with a Google Account.", "impact": "normal"},
+    {"id": "C9", "statement": "Apps requesting sensitive or restricted scopes must complete Google's OAuth app verification before being granted access.", "category": "verification", "status": "cross_checked", "source_ids": ["S6", "S4"], "evidence_quote": "must complete Google's OAuth app verification before being granted access.", "impact": "high", "note": "S4 also states that apps requesting sensitive or restricted scopes might need to complete verification unless an exception applies."},
+    {"id": "C10", "statement": "Apps using only non-sensitive scopes are not required to complete app verification.", "category": "verification", "status": "officially_documented", "source_ids": ["S6"], "evidence_quote": "it is not mandatory for your app to complete the app verification process.", "impact": "normal"},
+    {"id": "C11", "statement": "Showing your app name and logo on the consent screen requires lighter-weight brand verification.", "category": "verification", "status": "officially_documented", "source_ids": ["S6"], "evidence_quote": "you will need to complete a lighter-weight verification process known as", "impact": "normal"},
+    {"id": "C12", "statement": "Sensitive scope verification typically takes 3–5 business days.", "category": "review_timeline", "status": "officially_documented", "source_ids": ["S4"], "evidence_quote": "scope verification process typically takes 3-5 business days to complete.", "impact": "high"},
+    {"id": "C13", "statement": "Verification requires declaring all scopes with detailed justification and a video demonstration for sensitive scopes.", "category": "verification", "status": "officially_documented", "source_ids": ["S4"], "evidence_quote": "declaring all scopes, and providing detailed justification and a video demonstration for sensitive scopes.", "impact": "normal"},
+    {"id": "C14", "statement": "Verification preparation includes verifying ownership of the project's authorized domains.", "category": "verification", "status": "officially_documented", "source_ids": ["S4"], "evidence_quote": "Verify ownership of your project's authorized domains", "impact": "normal"},
+    {"id": "C15", "statement": "Apps accessing restricted data from or through a third-party server must undergo an annual security assessment by a Google-approved third party.", "category": "verification", "status": "officially_documented", "source_ids": ["S5"], "evidence_quote": "Apps accessing restricted data from or through a third-party server must undergo an annual security assessment by a Google-approved third party.", "impact": "high"},
+    {"id": "C16", "statement": "Because of the security assessment, restricted scope verification can potentially take several weeks.", "category": "review_timeline", "status": "officially_documented", "source_ids": ["S5"], "evidence_quote": "the restricted scopes verification process can potentially take several weeks to complete.", "impact": "high"},
+    {"id": "C17", "statement": "Brand verification typically takes 2–3 business days and must be completed first if branding changed.", "category": "review_timeline", "status": "officially_documented", "source_ids": ["S5"], "evidence_quote": "step first, which typically takes 2-3 business days", "impact": "normal"},
+    {"id": "C18", "statement": "Restricted-scope apps must be re-verified and reassessed at least every 12 months after the assessor's Letter of Assessment.", "category": "verification", "status": "officially_documented", "source_ids": ["S5"], "evidence_quote": "complete a security assessment at least every 12 months after your assessor's Letter of Assessment (LOA) approval date.", "impact": "high"},
+    {"id": "C19", "statement": "Exceptions to verification include personal use, development/testing/staging, service-owned data only, internal use, and domain-wide installation.", "category": "verification", "status": "officially_documented", "source_ids": ["S5"], "evidence_quote": "Exceptions to verification requirements include personal use, development/testing/staging environments, service-owned data only, internal use within an organization, and domain-wide installation.", "impact": "high"},
+    {"id": "C20", "statement": "Internal-only apps must be owned by the organization, with the consent screen set to the Internal user type.", "category": "registration", "status": "officially_documented", "source_ids": ["S5"], "evidence_quote": "The project must be owned by the organization, and its OAuth consent screen needs to be configured for an Internal user type", "impact": "normal"},
+    {"id": "C21", "statement": "Unverified apps showing the unverified-app screen are limited to 100 new users until verified.", "category": "access_requirements", "status": "officially_documented", "source_ids": ["S7"], "evidence_quote": "your app will be limited to 100 new users until it is verified.", "impact": "high"},
+    {"id": "C22", "statement": "Google publishes OAuth discovery metadata: authorization endpoint https://accounts.google.com/o/oauth2/v2/auth and token endpoint https://oauth2.googleapis.com/token.", "category": "endpoints", "status": "tested", "source_ids": ["S8"], "impact": "normal", "test_detail": "Fetched https://accounts.google.com/.well-known/openid-configuration on 2026-10-20: HTTP 200 with a valid discovery document (issuer https://accounts.google.com)."},
+    {"id": "C23", "statement": "The discovery document advertises PKCE code challenge methods plain and S256.", "category": "auth_model", "status": "tested", "source_ids": ["S8"], "impact": "normal", "test_detail": "Read code_challenge_methods_supported from the discovery document fetched on 2026-10-20."},
+    {"id": "C24", "statement": "Restricted Google Workspace services include high-risk Gmail and Drive scopes, which may need administrator configuration for internal apps.", "category": "scopes", "status": "officially_documented", "source_ids": ["S3"], "evidence_quote": "including high-risk Gmail and Drive scopes, might require additional configuration by your organization's administrators.", "impact": "high"},
+    {"id": "C25", "statement": "Not answered by the checked sources: how long the third-party security assessment takes or what it costs.", "category": "review_timeline", "status": "unknown", "source_ids": [], "impact": "high", "note": "Recorded as an open question while curating this guide."},
+    {"id": "C26", "statement": "Personal use (you, or a few people you know) is an exception to verification.", "category": "verification", "status": "officially_documented", "source_ids": ["S5"], "evidence_quote": "One use case is if you are the only user of your app or if your app is used by only a few users, all of whom are known personally to you.", "impact": "normal"},
+    {"id": "C27", "statement": "The Cloud Console automatically labels added scopes as non-sensitive, sensitive or restricted.", "category": "scopes", "status": "officially_documented", "source_ids": ["S6"], "evidence_quote": "When you add scopes to your project, scope categories (non-sensitive, sensitive, or restricted) are indicated automatically in the Google Cloud Console", "impact": "normal"},
+    {"id": "C28", "statement": "Google's web-server guide uses https://www.googleapis.com/auth/calendar.readonly in its example code.", "category": "scopes", "status": "officially_documented", "source_ids": ["S2"], "evidence_quote": "https://www.googleapis.com/auth/calendar.readonly", "impact": "normal"},
+    {"id": "C29", "statement": "The discovery document lists scopes openid, email and profile (identity scopes; API scopes are documented elsewhere).", "category": "scopes", "status": "tested", "source_ids": ["S8"], "impact": "normal", "test_detail": "Read scopes_supported from the discovery document fetched on 2026-10-20."}
+  ]
+}

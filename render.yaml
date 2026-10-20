@@ -1,0 +1,49 @@
+# Render Blueprint for the Integration Atlas API (FastAPI + Postgres).
+# The frontend deploys separately to Vercel and proxies /api/* here via BACKEND_URL.
+services:
+  - type: web
+    name: integration-atlas-api
+    runtime: python
+    rootDir: backend
+    plan: free
+    # One instance only: bring-your-own-key sessions live in process memory.
+    numInstances: 1
+    buildCommand: pip install uv && uv sync --frozen --no-dev
+    startCommand: uv run alembic upgrade head && uv run uvicorn app.main:app --host 0.0.0.0 --port $PORT --proxy-headers --forwarded-allow-ips='*'
+    healthCheckPath: /api/health
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.12.7
+      - key: ENVIRONMENT
+        value: production
+      - key: DATABASE_URL
+        fromDatabase:
+          name: integration-atlas-db
+          property: connectionString
+      - key: AUTO_CREATE_TABLES
+        value: "false"
+      - key: COOKIE_SECURE
+        value: "true"
+      - key: SESSION_SECRET
+        generateValue: true
+      # Set these in the Render dashboard (never commit them).
+      - key: ALLOWED_ORIGINS
+        sync: false
+      - key: PUBLIC_APP_URL
+        sync: false
+      - key: DEFAULT_LLM_PROVIDER
+        sync: false
+      - key: DEFAULT_LLM_MODEL
+        sync: false
+      - key: OPENROUTER_API_KEY
+        sync: false
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: TAVILY_API_KEY
+        sync: false
+
+databases:
+  - name: integration-atlas-db
+    plan: free

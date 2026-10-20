@@ -1,0 +1,203 @@
+{
+  "id": "5d3c2f0e-4b1a-4c55-9a51-51ac0000a002",
+  "slug": "github",
+  "provider_name": "GitHub",
+  "provider_domains": ["docs.github.com", "github.com"],
+  "submitted_input": "GitHub",
+  "submitted_url": null,
+  "intended_use_case": "An AI coding agent that reads customers' repositories and opens pull requests",
+  "integration_context": "multi_tenant_saas",
+  "origin": "seed",
+  "research_status": "seed_curated",
+  "generated_at": "2026-10-20T09:00:00Z",
+  "last_checked_at": "2026-10-20T09:00:00Z",
+
+  "authentication_model": "oauth2",
+  "auth_model_claim_ids": ["C1"],
+  "overview": "GitHub offers two app types, both on OAuth 2.0. GitHub recommends GitHub Apps: they use fine-grained permissions, let users pick repositories, issue 1-hour installation tokens, and can act without a user, which suits a coding agent. Registration is self-serve, and you choose whether any account can install the app. The checked docs describe no review for that. Organization owners may need to approve installs that request organization permissions. The GitHub Marketplace is optional: free listings follow general requirements, and paid listings need a verified publisher organization, 100+ installations, and listing verification, with no documented timeline.",
+  "recommended_path": {
+    "summary": "Register a GitHub App that can be installed on any account, with the minimum repository permissions your agent needs. Use an OAuth app only if you need enterprise-level resources.",
+    "options": [
+      {
+        "kind": "custom_oauth_app",
+        "title": "Register a GitHub App (recommended by GitHub)",
+        "summary": "Fine-grained permissions, per-repository access chosen by the installer, short-lived installation tokens, and user access tokens when you need to act as a user.",
+        "when_to_choose": "Agents that read code and open pull requests across customer organizations.",
+        "tradeoffs": ["More moving parts: JWT, installation tokens, webhooks", "Cannot be given enterprise-level permissions"],
+        "recommended": true,
+        "claim_ids": ["C2", "C3", "C4", "C9"]
+      },
+      {
+        "kind": "other",
+        "title": "Register a classic OAuth app",
+        "summary": "Acts only as the signed-in user, uses broad scopes such as repo, and is subject to the user's 5,000 requests/hour limit.",
+        "when_to_choose": "You need enterprise-level resources, or a simple sign-in-as-user flow.",
+        "tradeoffs": ["Coarse scopes (repo grants full repository access)", "Lower, non-scaling rate limits"],
+        "recommended": false,
+        "claim_ids": ["C10", "C11", "C16", "C18"]
+      },
+      {
+        "kind": "managed_oauth",
+        "title": "Use an integration platform's managed GitHub app",
+        "summary": "A platform supplies the registered app and stores tokens.",
+        "when_to_choose": "Quick prototypes.",
+        "tradeoffs": ["Installers see the platform's app name and permissions", "Permission set and rate limits depend on the platform (not verified here)"],
+        "recommended": false,
+        "claim_ids": []
+      }
+    ]
+  },
+  "effort_estimate": {"low_hours": 1, "high_hours": 2, "basis": "Recomputed from steps at load time."},
+  "external_wait": {
+    "kind": "unknown",
+    "summary": "No review is documented for direct installs; the Marketplace listing verification timeline is not documented.",
+    "range_text": null,
+    "explanation": "The checked pages describe registering and installing GitHub Apps without a GitHub review. Paid Marketplace listings require verification, but no duration is published. Organization-owner approval of installs depends on each customer.",
+    "claim_ids": ["C25"]
+  },
+  "approval_status": "conditional",
+  "approval_summary": "Registration and direct installs need no GitHub review in the checked docs. Organization owners must approve installs that request organization permissions. Paid Marketplace listings need publisher verification and listing verification.",
+  "approval_claim_ids": ["C12", "C22"],
+  "prerequisites": [
+    {"title": "A GitHub organization to own the app", "detail": "Apps can be registered under a personal account or organization; selling on the Marketplace requires an organization owner.", "claim_ids": ["C19"]},
+    {"title": "Public homepage and callback URLs", "detail": "Registration asks for a homepage URL and up to 10 callback URLs; use only information you consider public.", "claim_ids": ["C6"]}
+  ],
+  "setup_steps": [
+    {
+      "id": "choose-app-type", "phase": "prerequisites",
+      "title": "Choose GitHub App vs OAuth app",
+      "explanation": "Prefer a GitHub App: fine-grained permissions, installer-selected repositories, short-lived tokens, and the ability to act without a user. Choose an OAuth app only if you need enterprise-level resources.",
+      "why_it_matters": "Switching later forces every customer to reinstall or re-authorize.",
+      "expected_outcome": "A documented decision and the reason for it.",
+      "responsible": "developer_with_agent", "active_effort_minutes": 20, "depends_on": [], "claim_ids": ["C2", "C3", "C18"]
+    },
+    {
+      "id": "register-app", "phase": "registration",
+      "title": "Register the GitHub App under your organization",
+      "explanation": "In Developer settings, register a new GitHub App: name, homepage URL, callback URL(s), and choose 'Any account' so customers can install it.",
+      "why_it_matters": "'Only on this account' blocks every external customer from installing.",
+      "expected_outcome": "An app with an App ID, client ID/secret, and a private key.",
+      "responsible": "developer", "active_effort_minutes": 20, "depends_on": ["choose-app-type"], "claim_ids": ["C6", "C7", "C8"]
+    },
+    {
+      "id": "select-permissions", "phase": "scopes",
+      "title": "Select minimal repository permissions",
+      "explanation": "Pick only what the agent needs, for example read access to contents and write access to pull requests. GitHub Apps request targeted permissions instead of broad scopes.",
+      "why_it_matters": "Organization owners review requested permissions, and broad permissions slow approvals.",
+      "expected_outcome": "A permission set mapped to agent features.",
+      "responsible": "developer_with_agent", "active_effort_minutes": 30, "depends_on": ["register-app"], "claim_ids": ["C9", "C10"]
+    },
+    {
+      "id": "configure-webhooks", "phase": "credentials",
+      "title": "Configure callback URL, webhook URL and webhook secret",
+      "explanation": "Set callback URLs for user authorization, and a webhook URL and secret if the agent reacts to events. Generate and store the private key securely.",
+      "why_it_matters": "Webhooks tell you when installations change, so you know which repositories you can still access.",
+      "expected_outcome": "Callbacks and signed webhooks reach your service.",
+      "responsible": "developer", "active_effort_minutes": 20, "depends_on": ["register-app"], "claim_ids": ["C6"]
+    },
+    {
+      "id": "implement-installation-tokens", "phase": "implementation",
+      "title": "Implement installation access tokens",
+      "explanation": "Sign a JWT with the app's private key, exchange it for an installation access token per installation, and refresh it, since tokens expire after one hour.",
+      "why_it_matters": "This lets the agent act as the app across installations, with rate limits that scale with repositories and users.",
+      "expected_outcome": "The agent can read the repositories selected by the installer and open pull requests.",
+      "responsible": "developer_with_agent", "active_effort_minutes": 90, "depends_on": ["select-permissions"], "claim_ids": ["C4", "C17"]
+    },
+    {
+      "id": "implement-user-auth", "phase": "implementation",
+      "title": "Implement user authorization where needed",
+      "explanation": "If actions must be attributed to a user, run the web flow with state and PKCE. Codes expire after 10 minutes; user tokens expire after eight hours, with refresh tokens valid for six months when expiring tokens are enabled (the default for new apps).",
+      "why_it_matters": "Mishandled state or refresh logic leads to account mix-ups or silent failures after eight hours.",
+      "expected_outcome": "Users can sign in, and tokens refresh automatically.",
+      "responsible": "developer_with_agent", "active_effort_minutes": 120, "depends_on": ["configure-webhooks"], "claim_ids": ["C5", "C14", "C15", "C24"]
+    },
+    {
+      "id": "test-org-install", "phase": "testing",
+      "title": "Test installing on an organization you don't own",
+      "explanation": "Install on a separate test organization, request organization permissions, and confirm the owner-approval flow and repository selection behave as expected.",
+      "why_it_matters": "Owner approval is the most common place real customer installs stall.",
+      "expected_outcome": "Verified install, owner approval, and access-revocation behavior.",
+      "responsible": "developer", "active_effort_minutes": 45, "depends_on": ["implement-installation-tokens"], "claim_ids": ["C12", "C13"]
+    },
+    {
+      "id": "marketplace-optional", "phase": "distribution",
+      "title": "Optional: list on GitHub Marketplace",
+      "explanation": "Free listings need a privacy policy link, support contact, and a publicly available app. Paid listings need a verified publisher organization, 100+ installations for GitHub Apps, billing webhooks, and listing verification.",
+      "why_it_matters": "Marketplace listing adds discovery and billing but also requirements and an undocumented verification wait.",
+      "expected_outcome": "A decision on whether to list, with requirements tracked.",
+      "responsible": "developer", "active_effort_minutes": 120, "depends_on": ["test-org-install"], "claim_ids": ["C19", "C20", "C21", "C22", "C23"]
+    }
+  ],
+  "scopes_or_permissions": [
+    {"name": "GitHub App repository permissions (e.g. contents, pull requests)", "description": "Targeted read/write permissions chosen per resource when registering the app.", "sensitivity": "unknown", "needed_for": "Reading code and opening pull requests", "claim_ids": ["C9"]},
+    {"name": "repo (OAuth app scope)", "description": "Full access to public and private repositories, including code, commit statuses, invitations, collaborators, deployment statuses and webhooks.", "sensitivity": "admin", "needed_for": "Only if you build a classic OAuth app instead", "claim_ids": ["C11"]},
+    {"name": "Organization permissions", "description": "Permissions on organization resources; the organization owner must approve installs that request them.", "sensitivity": "admin", "needed_for": "Org-level features only", "claim_ids": ["C12"]}
+  ],
+  "approval_and_distribution": [
+    {"kind": "app_registration", "status": "not_required", "title": "App registration", "applies_when": "Always", "description": "Self-serve in Developer settings; up to 100 GitHub Apps per account or organization.", "claim_ids": ["C7"]},
+    {"kind": "user_consent", "status": "required", "title": "Installer selects repositories", "applies_when": "Every installation", "description": "Users with the right permissions install the app and choose which repositories it can access.", "claim_ids": ["C2"]},
+    {"kind": "admin_consent", "status": "conditional", "title": "Organization owner approval", "applies_when": "The app requests organization permissions, or an OAuth app policy is active", "description": "Organization owners must approve installs that need organization permissions, and only owners can authorize OAuth apps under an application policy.", "claim_ids": ["C12", "C13"]},
+    {"kind": "marketplace_listing", "status": "conditional", "title": "Paid Marketplace listing verification", "applies_when": "You sell the app on GitHub Marketplace", "description": "Requires a verified publisher organization, 100+ installations (GitHub Apps) or 200+ users (OAuth apps), and listing verification.", "external_wait": {"kind": "unknown", "summary": "Not documented", "range_text": null, "explanation": "The checked pages do not state how long publisher or listing verification takes.", "claim_ids": ["C25"]}, "claim_ids": ["C20", "C21", "C22"]}
+  ],
+  "testing_plan": [
+    {"title": "Install on a second organization", "detail": "Confirm owner approval, repository selection, and that removing repositories revokes access.", "claim_ids": ["C12"]},
+    {"title": "Force token expiry", "detail": "Let installation tokens (1 hour) and user tokens (8 hours) expire and confirm refresh paths work.", "claim_ids": ["C4", "C5"]},
+    {"title": "Check rate-limit headroom", "detail": "Compare installation-token limits with the 5,000/hour user-token limit for your expected load.", "claim_ids": ["C16", "C17"]}
+  ],
+  "blockers_and_unknowns": [
+    {"id": "org-owner-approval", "kind": "risk", "title": "Customer org owners must approve some installs", "detail": "Installs that need organization permissions wait on each customer's owner.", "mitigation": "Avoid organization permissions unless essential, and explain why in your install docs.", "claim_ids": ["C12"]},
+    {"id": "enterprise-resources", "kind": "blocker", "title": "GitHub Apps can't get enterprise-level permissions", "detail": "If the agent needs the enterprise object itself, a GitHub App won't work.", "mitigation": "Use an OAuth app for enterprise-level features.", "claim_ids": ["C18"]},
+    {"id": "marketplace-verification-time", "kind": "unknown", "title": "Marketplace verification duration", "detail": "No timeline is documented for publisher or listing verification.", "mitigation": "Don't block launch on Marketplace; distribute via direct install first.", "claim_ids": ["C25"]},
+    {"id": "public-install-review", "kind": "unknown", "title": "No explicit statement on review for public apps", "detail": "The checked pages describe choosing 'Any account' without a review step, but don't say explicitly that none exists.", "mitigation": "Treat direct installs as self-serve, and re-check if GitHub adds policy.", "claim_ids": ["C26"]}
+  ],
+  "agent_vs_developer_actions": [
+    {"action": "Map agent features to the minimum GitHub App permissions", "actor": "agent", "rationale": "Mechanical, checkable against GitHub's permission docs."},
+    {"action": "Generate JWT signing, installation-token caching, and webhook signature verification", "actor": "agent", "rationale": "Well-specified code."},
+    {"action": "Register the app, download the private key, and set 'Any account'", "actor": "developer", "rationale": "Requires signing in to GitHub and handling the private key."},
+    {"action": "Approve installs as an organization owner", "actor": "developer", "rationale": "Done by each customer's organization owner."},
+    {"action": "Apply for publisher verification and submit a paid listing", "actor": "developer", "rationale": "Account-level actions and agreements."}
+  ],
+  "context_variations": {
+    "personal": "Register the GitHub App for 'Only on this account' and install it on your own repositories; no review or owner approval beyond your own.",
+    "internal": "Register under your organization, install only there, and have an organization owner approve organization permissions.",
+    "multi_tenant_saas": "Register with 'Any account', minimize permissions to ease owner approvals, and treat Marketplace as optional."
+  },
+
+  "sources": [
+    {"id": "S1", "title": "Differences between GitHub Apps and OAuth apps", "url": "https://docs.github.com/en/apps/oauth-apps/building-oauth-apps/differences-between-github-apps-and-oauth-apps", "domain": "docs.github.com", "source_type": "official_docs", "accessed_at": "2026-10-20T08:50:00Z", "retrieval_status": "retrieved"},
+    {"id": "S2", "title": "Registering a GitHub App", "url": "https://docs.github.com/en/apps/creating-github-apps/registering-a-github-app/registering-a-github-app", "domain": "docs.github.com", "source_type": "official_docs", "accessed_at": "2026-10-20T08:50:00Z", "retrieval_status": "retrieved"},
+    {"id": "S3", "title": "Creating an OAuth app", "url": "https://docs.github.com/en/apps/oauth-apps/building-oauth-apps/creating-an-oauth-app", "domain": "docs.github.com", "source_type": "official_docs", "accessed_at": "2026-10-20T08:50:00Z", "retrieval_status": "retrieved"},
+    {"id": "S4", "title": "Authorizing OAuth apps", "url": "https://docs.github.com/en/apps/oauth-apps/building-oauth-apps/authorizing-oauth-apps", "domain": "docs.github.com", "source_type": "official_docs", "accessed_at": "2026-10-20T08:55:00Z", "retrieval_status": "retrieved"},
+    {"id": "S5", "title": "Scopes for OAuth apps", "url": "https://docs.github.com/en/apps/oauth-apps/building-oauth-apps/scopes-for-oauth-apps", "domain": "docs.github.com", "source_type": "official_api_reference", "accessed_at": "2026-10-20T08:50:00Z", "retrieval_status": "retrieved"},
+    {"id": "S6", "title": "About GitHub Marketplace for apps", "url": "https://docs.github.com/en/apps/github-marketplace/github-marketplace-overview/about-github-marketplace-for-apps", "domain": "docs.github.com", "source_type": "official_docs", "accessed_at": "2026-10-20T08:50:00Z", "retrieval_status": "retrieved"},
+    {"id": "S7", "title": "Requirements for listing an app", "url": "https://docs.github.com/en/apps/github-marketplace/creating-apps-for-github-marketplace/requirements-for-listing-an-app", "domain": "docs.github.com", "source_type": "official_policy", "accessed_at": "2026-10-20T08:55:00Z", "retrieval_status": "retrieved"}
+  ],
+  "claims": [
+    {"id": "C1", "statement": "Both OAuth apps and GitHub Apps use OAuth 2.0.", "category": "auth_model", "status": "officially_documented", "source_ids": ["S3"], "evidence_quote": "Both OAuth apps and GitHub Apps use OAuth 2.0.", "impact": "normal"},
+    {"id": "C2", "statement": "GitHub recommends GitHub Apps over OAuth apps because they use fine-grained permissions, let users control repository access, and use short-lived tokens.", "category": "auth_model", "status": "cross_checked", "source_ids": ["S1", "S6"], "evidence_quote": "In general, GitHub Apps are preferred over OAuth apps. GitHub Apps use fine-grained permissions, give the user more control over which repositories the app can access, and use short-lived tokens.", "impact": "high", "note": "S6 also calls GitHub Apps the officially recommended way to integrate with GitHub."},
+    {"id": "C3", "statement": "GitHub Apps can act on behalf of a user or independently of a user.", "category": "auth_model", "status": "officially_documented", "source_ids": ["S1"], "evidence_quote": "However, GitHub Apps can also act independently of a user.", "impact": "normal"},
+    {"id": "C4", "statement": "Installation access tokens expire after a predefined time, currently 1 hour.", "category": "credentials", "status": "officially_documented", "source_ids": ["S1"], "evidence_quote": "Installation access tokens expire after a predefined amount of time (currently 1 hour).", "impact": "normal"},
+    {"id": "C5", "statement": "With expiring tokens, user access tokens expire after eight hours and refresh tokens after six months without use.", "category": "credentials", "status": "officially_documented", "source_ids": ["S4"], "evidence_quote": "The access token expires after eight hours, and the refresh token expires after six months without use.", "impact": "normal"},
+    {"id": "C6", "statement": "Up to 10 callback URLs can be registered.", "category": "redirect_uri", "status": "cross_checked", "source_ids": ["S2", "S3"], "evidence_quote": "You can enter up to 10 callback URLs.", "impact": "normal"},
+    {"id": "C7", "statement": "A user or organization can register up to 100 GitHub Apps, with no limit on installations.", "category": "registration", "status": "officially_documented", "source_ids": ["S2"], "evidence_quote": "A user or organization can register up to 100 GitHub Apps, but there is no limit to how many GitHub Apps can be installed on an account.", "impact": "normal"},
+    {"id": "C8", "statement": "During registration you choose whether the app can be installed only on your account or on any account.", "category": "distribution", "status": "officially_documented", "source_ids": ["S2"], "evidence_quote": "Under \"Where can this GitHub App be installed?\", select Only on this account or Any account", "impact": "high"},
+    {"id": "C9", "statement": "GitHub Apps request targeted permissions for only what they need.", "category": "scopes", "status": "officially_documented", "source_ids": ["S1"], "evidence_quote": "Unlike OAuth apps, GitHub Apps have targeted permissions that allow them to request access only to what they need.", "impact": "normal"},
+    {"id": "C10", "statement": "OAuth apps cannot use granular permissions.", "category": "scopes", "status": "officially_documented", "source_ids": ["S1"], "evidence_quote": "OAuth apps can't use granular permissions.", "impact": "normal"},
+    {"id": "C11", "statement": "The repo scope grants full access to public and private repositories.", "category": "scopes", "status": "officially_documented", "source_ids": ["S5"], "evidence_quote": "Grants full access to public and private repositories including read and write access to code, commit statuses, repository invitations, collaborators, deployment statuses, and repository webhooks.", "impact": "high"},
+    {"id": "C12", "statement": "If a GitHub App installed in a repository requires organization permissions, the organization owner must approve it.", "category": "consent", "status": "officially_documented", "source_ids": ["S1"], "evidence_quote": "If a GitHub App is installed in a repository and requires organization permissions, the organization owner must approve the application.", "impact": "high"},
+    {"id": "C13", "statement": "With an organization application policy active, only an owner can authorize an OAuth app.", "category": "consent", "status": "officially_documented", "source_ids": ["S1"], "evidence_quote": "If an organization application policy is active, only an organization owner can authorize the installation of an OAuth app.", "impact": "normal"},
+    {"id": "C14", "statement": "The authorization code expires after 10 minutes, and mismatched state values mean the request should be aborted.", "category": "credentials", "status": "officially_documented", "source_ids": ["S4"], "evidence_quote": "The temporary code will expire after 10 minutes. If the states don't match, then a third party created the request, and you should abort the process.", "impact": "normal"},
+    {"id": "C15", "statement": "The web flow supports PKCE.", "category": "auth_model", "status": "officially_documented", "source_ids": ["S4"], "evidence_quote": "Used to secure the authentication flow with PKCE (Proof Key for Code Exchange).", "impact": "normal"},
+    {"id": "C16", "statement": "OAuth tokens use the user's rate limit of 5,000 requests per hour.", "category": "rate_limits", "status": "officially_documented", "source_ids": ["S1"], "evidence_quote": "OAuth tokens use the user's rate limit of 5,000 requests per hour.", "impact": "normal"},
+    {"id": "C17", "statement": "GitHub App installation-token rate limits scale with the number of repositories and organization users.", "category": "rate_limits", "status": "officially_documented", "source_ids": ["S1"], "evidence_quote": "The rate limit for GitHub Apps using an installation access token scales with the number of repositories and number of organization users.", "impact": "normal"},
+    {"id": "C18", "statement": "Use an OAuth app if you need enterprise-level resources, because GitHub Apps cannot yet be given enterprise permissions.", "category": "auth_model", "status": "officially_documented", "source_ids": ["S1"], "evidence_quote": "If your app needs to access enterprise-level resources such as the enterprise object itself, you should use an OAuth app because a GitHub App cannot yet be given permissions against an enterprise.", "impact": "high"},
+    {"id": "C19", "statement": "Anyone can list apps for free on GitHub Marketplace, but only organization-owned apps can be sold.", "category": "distribution", "status": "officially_documented", "source_ids": ["S6"], "evidence_quote": "Anyone can share their apps with other users for free on GitHub Marketplace but only apps owned by organizations can sell their app.", "impact": "normal"},
+    {"id": "C20", "statement": "To publish a paid app, a GitHub App should have at least 100 installations (OAuth apps: 200 users).", "category": "access_requirements", "status": "officially_documented", "source_ids": ["S7"], "evidence_quote": "GitHub Apps should have a minimum of 100 installations.", "impact": "high", "note": "Listed under the requirements for paid apps only; free listings follow the general requirements."},
+    {"id": "C21", "statement": "Marketplace listings must link to a valid privacy policy.", "category": "verification", "status": "officially_documented", "source_ids": ["S7"], "evidence_quote": "Listings must have a valid link to a privacy policy.", "impact": "normal"},
+    {"id": "C22", "statement": "Publishing a paid app requires requesting verification for the app listing.", "category": "verification", "status": "officially_documented", "source_ids": ["S7"], "evidence_quote": "When you are ready to publish the app on GitHub Marketplace you must request verification for the app listing.", "impact": "high", "note": "Appears in the paid-app requirements section."},
+    {"id": "C23", "statement": "Publishing paid plans requires completing publisher verification.", "category": "verification", "status": "officially_documented", "source_ids": ["S6"], "evidence_quote": "To publish paid plans for your app and display a marketplace badge, you must complete the publisher verification process.", "impact": "normal"},
+    {"id": "C24", "statement": "For new OAuth apps, the 'Expire user access tokens' option is enabled by default.", "category": "credentials", "status": "officially_documented", "source_ids": ["S3"], "evidence_quote": "Expire user access tokens is enabled by default.", "impact": "normal"},
+    {"id": "C25", "statement": "Not answered by the checked sources: how long Marketplace publisher or listing verification takes.", "category": "review_timeline", "status": "unknown", "source_ids": [], "impact": "normal", "note": "Recorded as an open question while curating this guide."},
+    {"id": "C26", "statement": "Choosing 'Any account' appears to make the app installable by others without a GitHub review; the checked pages describe no review step, but do not say so explicitly.", "category": "distribution", "status": "inferred", "source_ids": [], "impact": "normal", "note": "Inference from the absence of a review step in the registration docs."}
+  ]
+}
